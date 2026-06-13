@@ -35,18 +35,7 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 
 sessions: dict[str, dict] = {}
 
-SYSTEM_PROMPT = """You are a DevOps interview coach. You write answers that sound like a real engineer talking.
-
-OUTPUT:
-Question: <user question>
-Best Answer: <your answer>
-
-Write like you're explaining to another engineer over coffee. Not like a blog or presentation.
-
-Copy this style — this is what a good answer sounds like:
-"So in my current project, I work with Kubernetes pretty regularly. Most of my day-to-day is maintaining deployments and troubleshooting when something goes wrong. I also set up CI/CD pipelines and fix them when they break. Honestly, a lot of it is just figuring out what went wrong and making sure the team can keep shipping."
-
-Never invent anything. If resume says "worked with", say "worked with", not "led". If limited experience, use "I was involved in", "I supported", "I had exposure to"."""
+SYSTEM_PROMPT = """You are a DevOps engineer answering interview questions. Answer like a real person talking, not a textbook."""
 
 def get_openai_client(api_key=None, base_url=None):
     api_key = api_key or os.getenv("OPENAI_API_KEY")
@@ -161,15 +150,6 @@ def ask(req: AskRequest):
         context_parts.append(f"\nJOB DESCRIPTION CONTEXT:\n{jd_text}\n\nTailor answers to this role. Prioritize mentioned technologies and seniority level.")
     system = "\n".join(context_parts)
 
-    style_guides = {
-        "natural": "\nSTYLE: Answer in a natural, conversational tone — as if speaking directly to the candidate. Balance depth with clarity.",
-        "concise": "\nSTYLE: Keep it short and direct. Aim for 80-120 words. Get straight to the point. Use plain, simple sentences.",
-        "detailed": "\nSTYLE: Be thorough and detailed. Provide deep explanations, multiple examples, and comprehensive coverage of the topic. 2-3 paragraphs per section is fine.",
-        "beginner": "\nSTYLE: Explain as if the candidate is new to DevOps. Avoid jargon without explanation. Use simple analogies. Break down concepts step by step. Be encouraging and patient.",
-    }
-    style_instruction = style_guides.get(req.style, style_guides["natural"])
-    system += style_instruction
-
     providers = get_providers(req)
     if not providers:
         return StreamingResponse(
@@ -184,14 +164,23 @@ def ask(req: AskRequest):
                 switched = True
                 yield f"data: {json.dumps({'token': '[Switching to backup AI service...]'})}\n\n"
             try:
+                style_instr_map = {
+                    "natural": "Answer in ONE short unbroken paragraph. No blank lines. Start with 'So' or 'Yeah'. No concluding sentence. 4-7 sentences.",
+                    "concise": "Answer in 2-4 short sentences. One paragraph. No blank lines.",
+                    "detailed": "Answer in 2 short paragraphs max. Still conversational. Start with 'So' or 'Yeah'.",
+                    "beginner": "Explain simply. Avoid jargon. Use short sentences. One paragraph.",
+                }
+                base_format = style_instr_map.get(req.style, style_instr_map["natural"])
+                format_instr = f"""\n\nIMPORTANT - {base_format} Never use "Overall", "One thing I've learned", "In conclusion", "It's important to". Example: "So I've been using Docker for about three years now. Started with containerizing simple Node apps. I'm comfortable writing Dockerfiles. I wouldn't say I'm an expert but I handle it day to day." """
+                user_msg = req.question + format_instr
                 stream = client.chat.completions.create(
                     model=model,
                     messages=[
                         {"role": "system", "content": system},
-                        {"role": "user", "content": req.question},
+                        {"role": "user", "content": user_msg},
                     ],
-                    temperature=0.9,
-                    max_tokens=2048,
+                    temperature=0.7,
+                    max_tokens=150,
                     stream=True,
                 )
                 for chunk in stream:
