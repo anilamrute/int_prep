@@ -34,3 +34,8 @@ skills-lock.json
 
 # windows artifact
 nul
+ollama_setup.exe
+
+# runtime artifacts
+backend/backend.log
+backend/.env

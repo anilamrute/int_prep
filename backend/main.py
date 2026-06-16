@@ -10,8 +10,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv
-from openai import OpenAI
-
 from PyPDF2 import PdfReader
 from docx import Document
 
@@ -33,34 +31,40 @@ app.add_middleware(
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
 
+from provider_manager import ProviderManager
+
 sessions: dict[str, dict] = {}
+provider_manager = ProviderManager()
 
-SYSTEM_PROMPT = """You are a DevOps engineer answering interview questions. Answer like a real person talking, not a textbook."""
+SYSTEM_PROMPT = """You're Anil Amrute, a DevOps engineer in an interview. Keep it short and real.
 
-def get_openai_client(api_key=None, base_url=None):
-    api_key = api_key or os.getenv("OPENAI_API_KEY")
-    base_url = base_url or os.getenv("OPENAI_BASE_URL")
-    if not api_key:
-        return None
-    kwargs = {"api_key": api_key}
-    if base_url:
-        kwargs["base_url"] = base_url
-    return OpenAI(**kwargs)
+BAD (don't do this):
+"What tools have you used for CI/CD?"
+→ "I've used Jenkins, GitLab CI, CircleCI, GitHub Actions, Docker, and Kubernetes. Each has its own strengths..." ← This sounds like a resume list. Don't list.
 
-def get_providers(req):
-    """Return list of (client, model, label) tuples to try in order."""
-    providers = []
-    primary = get_openai_client()
-    if primary:
-        providers.append((primary, req.model, "primary"))
-    backup_key = os.getenv("BACKUP_OPENAI_API_KEY")
-    backup_base = os.getenv("BACKUP_OPENAI_BASE_URL")
-    backup_model = os.getenv("BACKUP_MODEL", "openai/gpt-4o")
-    if backup_key:
-        backup = get_openai_client(api_key=backup_key, base_url=backup_base)
-        if backup:
-            providers.append((backup, backup_model, "backup"))
-    return providers
+GOOD (do this instead):
+"What tools have you used for CI/CD?"
+→ "In my experience, I've worked with tools like GitHub Actions and Jenkins to automate the pipelines. Depending on the project, we configured stages for build, testing, and deployments, and if a pipeline failed, I'd usually investigate the logs, identify the root cause, and coordinate with the relevant teams to get things back on track."
+
+See the difference? Talk about what you DID, not what you know. Pick 1-2 tools and go deep on real experience. Never list everything.
+
+MORE EXAMPLES:
+"Explain Docker."
+→ BAD: "Docker is a containerization platform that allows you to package applications..." ← definition
+→ GOOD: "So I've been using Docker for about three years now. Started with containerizing simple Node apps. I'm comfortable writing Dockerfiles. I wouldn't say I'm an expert but I handle it day to day."
+
+"Explain Kubernetes."
+→ BAD: "Kubernetes is an orchestration platform for containerized workloads..."
+→ GOOD: "What happened was, we had about 15 microservices running on bare EC2 instances and it was a nightmare to manage. So we moved to Kubernetes. I set up the EKS cluster, configured deployments and services, and set up HorizontalPodAutoscaler based on CPU metrics."
+
+RULES:
+- Never list tools or technologies. Pick 1-2 and talk about real experience.
+- Never start with "Overall", "In conclusion", "It's important to".
+- Never use "I pioneered", "I spearheaded", "I architected", "I leveraged".
+- Never invent metrics or achievements.
+- Never add follow-up questions, coaching, or templates.
+- End naturally. Don't summarize.
+- For code: explain briefly, then show it in a fenced block."""
 
 def extract_text_from_pdf(path: str) -> str:
     try:
@@ -81,6 +85,10 @@ def extract_text_from_docx(path: str) -> str:
 @app.get("/api/health")
 def health():
     return {"status": "ok"}
+
+@app.get("/api/models")
+def get_models():
+    return provider_manager.get_available_models()
 
 @app.post("/api/upload/resume")
 async def upload_resume(session_id: str = "default", file: UploadFile = File(...)):
@@ -135,8 +143,9 @@ def clear_jd(session_id: str = "default"):
 class AskRequest(BaseModel):
     question: str
     session_id: str = "default"
-    model: str = "llama-3.3-70b-versatile"
+    model: str = "groq"
     style: str = "natural"
+    length: str = "medium"
 
 @app.post("/api/ask")
 def ask(req: AskRequest):
@@ -150,53 +159,21 @@ def ask(req: AskRequest):
         context_parts.append(f"\nJOB DESCRIPTION CONTEXT:\n{jd_text}\n\nTailor answers to this role. Prioritize mentioned technologies and seniority level.")
     system = "\n".join(context_parts)
 
-    providers = get_providers(req)
-    if not providers:
-        return StreamingResponse(
-            iter([f"data: {json.dumps({'error': 'No AI providers configured. Set API keys in .env'})}\n\n"]),
-            media_type="text/event-stream",
-        )
+    length_map = {
+        "short": "Answer in 2-4 short sentences (30-60 seconds when spoken).",
+        "medium": "Answer in one paragraph of 4-8 sentences (1-2 minutes when spoken).",
+        "detailed": "Answer in 2 paragraphs, 8-14 sentences total (2-3 minutes when spoken).",
+    }
+    base_length = length_map.get(req.length, length_map["medium"])
+
+    style_instr = f"""\n{base_length}
+Don't list tools. Don't explain concepts. Just talk about what you've actually done with 1-2 examples. Keep it short and real."""
+    user_msg = req.question + style_instr
+
+    provider_manager._run_health_checks()
 
     def generate():
-        switched = False
-        for idx, (client, model, label) in enumerate(providers):
-            if idx > 0 and not switched:
-                switched = True
-                yield f"data: {json.dumps({'token': '[Switching to backup AI service...]'})}\n\n"
-            try:
-                style_instr_map = {
-                    "natural": "Answer in ONE short unbroken paragraph. No blank lines. Start with 'So' or 'Yeah'. No concluding sentence. 4-7 sentences.",
-                    "concise": "Answer in 2-4 short sentences. One paragraph. No blank lines.",
-                    "detailed": "Answer in 2 short paragraphs max. Still conversational. Start with 'So' or 'Yeah'.",
-                    "beginner": "Explain simply. Avoid jargon. Use short sentences. One paragraph.",
-                }
-                base_format = style_instr_map.get(req.style, style_instr_map["natural"])
-                format_instr = f"""\n\nIMPORTANT - {base_format} Never use "Overall", "One thing I've learned", "In conclusion", "It's important to". Example: "So I've been using Docker for about three years now. Started with containerizing simple Node apps. I'm comfortable writing Dockerfiles. I wouldn't say I'm an expert but I handle it day to day." """
-                user_msg = req.question + format_instr
-                stream = client.chat.completions.create(
-                    model=model,
-                    messages=[
-                        {"role": "system", "content": system},
-                        {"role": "user", "content": user_msg},
-                    ],
-                    temperature=0.7,
-                    max_tokens=150,
-                    stream=True,
-                )
-                for chunk in stream:
-                    delta = chunk.choices[0].delta.content
-                    if delta:
-                        yield f"data: {json.dumps({'token': delta})}\n\n"
-                yield f"data: {json.dumps({'done': True})}\n\n"
-                return
-            except Exception as e:
-                err_str = str(e)
-                if "402" in err_str or "insufficient credits" in err_str.lower() or "payment required" in err_str.lower():
-                    logger.warning(f"Provider {label} returned 402, trying next...")
-                    continue
-                yield f"data: {json.dumps({'error': err_str})}\n\n"
-                return
-        yield f"data: {json.dumps({'error': 'All AI providers failed. Please check your API keys.'})}\n\n"
+        yield from provider_manager.generate(user_msg, system, preferred_model=req.model)
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 

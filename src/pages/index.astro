@@ -12,6 +12,8 @@ const API_BASE = 'http://localhost:8000';
 				<span class="badge">DevOps</span>
 			</div>
 			<div class="header-right">
+				<span id="providerBadge" class="provider-badge hidden"></span>
+				<select id="headerModelSelect" class="header-model-select" onchange="onModelChange(this.value)"></select>
 				<button id="settingsBtn" class="icon-btn" title="Settings" onclick="toggleSettings()">
 					<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>
 				</button>
@@ -21,20 +23,13 @@ const API_BASE = 'http://localhost:8000';
 		<div id="settingsPanel" class="settings-panel hidden">
 			<div class="settings-inner">
 				<h3>Settings</h3>
-				<label>API Base URL</label>
-				<input id="apiBaseInput" type="text" value="http://localhost:8000" class="input" />
-				<label>AI Model</label>
-				<select id="modelSelect" class="input">
-					<option value="llama-3.3-70b-versatile">Llama 3.3 70B</option>
-					<option value="llama-3.1-8b-instant">Llama 3.1 8B</option>
-					<option value="qwen/qwen3-32b">Qwen 3 32B</option>
-				</select>
-				<label>Answer Style</label>
-				<select id="styleSelect" class="input">
-					<option value="natural">Natural (Default)</option>
-					<option value="concise">Concise</option>
-					<option value="detailed">Detailed</option>
-					<option value="beginner">Beginner-Friendly</option>
+				<label>AI Provider</label>
+				<select id="modelSelect" class="input"></select>
+				<label>Answer Length</label>
+				<select id="lengthSelect" class="input">
+					<option value="short">Short (30-60s)</option>
+					<option value="medium" selected>Medium (1-2 min)</option>
+					<option value="detailed">Detailed (2-3 min)</option>
 				</select>
 				<button class="btn btn-secondary btn-sm" onclick="toggleSettings()">Close</button>
 			</div>
@@ -67,32 +62,21 @@ const API_BASE = 'http://localhost:8000';
 					<button id="clearJDBtn" class="btn-link hidden" onclick="clearJD()">Clear</button>
 				</div>
 
-				<div class="sidebar-section sidebar-tips">
-					<h3>Sample Questions</h3>
-					<div class="tip-chips">
-						<button class="chip" onclick="askQuick('Tell me about yourself')">Tell me about yourself</button>
-						<button class="chip" onclick="askQuick('Explain your Kubernetes experience')">Explain your Kubernetes experience</button>
-						<button class="chip" onclick="askQuick('Describe a production incident you handled')">Production incident you handled</button>
-						<button class="chip" onclick="askQuick('Explain blue-green deployment')">Blue-green deployment</button>
-						<button class="chip" onclick="askQuick('How do you troubleshoot failing pods?')">Troubleshoot failing pods</button>
-						<button class="chip" onclick="askQuick('Explain CI/CD pipelines')">CI/CD pipelines</button>
-						<button class="chip" onclick="askQuick('What happens when a node becomes NotReady?')">Node NotReady</button>
-						<button class="chip" onclick="askQuick('Give me a STAR answer for a time you reduced downtime')">STAR: Reduced downtime</button>
-					</div>
+				<div class="sidebar-section sidebar-faq">
+					<h3>⭐ Frequently Asked Questions</h3>
+					<input id="faqSearch" class="faq-search" type="text" placeholder="Search questions..." oninput="filterFAQ()" />
+					<div id="faqList" class="faq-list"></div>
+				</div>
+
+				<div class="sidebar-section sidebar-recent">
+					<h3>Recent Questions</h3>
+					<div id="recentList" class="recent-list"></div>
+					<button id="clearHistoryBtn" class="btn-link hidden" onclick="clearHistory()">Clear history</button>
 				</div>
 			</aside>
 
 			<main id="chatArea">
-				<div id="messages">
-					<div class="message assistant">
-						<div class="msg-avatar">
-							<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
-						</div>
-						<div class="msg-content">
-							<p>Hi! I'm your DevOps Interview Answer Coach. Upload your resume and job description for personalized answers, then ask me any interview question to get started.</p>
-						</div>
-					</div>
-				</div>
+				<div id="messages"></div>
 
 				<div id="typingIndicator" class="typing-indicator hidden">
 					<span></span><span></span><span></span>
@@ -104,7 +88,13 @@ const API_BASE = 'http://localhost:8000';
 						<button id="micBtn" class="icon-btn mic-btn" onclick="toggleMic()" title="Ask with voice">
 							<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
 						</button>
-						<span id="listeningLabel" class="listening-label hidden">Listening...</span>
+						<div id="micStatus" class="mic-status hidden">
+							<div class="mic-status-row">
+								<span id="listeningLabel" class="listening-label">Listening</span>
+								<span id="micLevel" class="mic-level"><span class="mic-level-track"></span></span>
+							</div>
+							<span id="micTranscript" class="mic-transcript"></span>
+						</div>
 					</div>
 					<textarea id="questionInput" rows="1" placeholder="Ask an interview question..." onkeydown="handleKeyDown(event)"></textarea>
 					<button id="sendBtn" class="btn btn-primary btn-send" onclick="sendQuestion()" disabled>
@@ -176,8 +166,35 @@ const API_BASE = 'http://localhost:8000';
 	}
 	.header-right {
 		display: flex;
+		align-items: center;
 		gap: 8px;
 	}
+	.provider-badge {
+		font-family: 'JetBrains Mono', monospace;
+		font-size: 10px;
+		font-weight: 500;
+		padding: 2px 8px;
+		border-radius: var(--radius-pill);
+		white-space: nowrap;
+		transition: all 0.2s;
+	}
+	.provider-badge.gemini { background: #e8f5e9; color: #2e7d32; }
+	.provider-badge.grok { background: #fff3e0; color: #e65100; }
+	.provider-badge.local { background: #e3f2fd; color: #1565c0; }
+	.provider-badge.hidden { display: none; }
+	.header-model-select {
+		font-family: 'JetBrains Mono', monospace;
+		font-size: 11px;
+		height: 28px;
+		padding: 0 6px;
+		border: 1px solid var(--hairline);
+		border-radius: var(--radius-sm);
+		background: var(--canvas);
+		color: var(--ink);
+		cursor: pointer;
+		outline: none;
+	}
+	.header-model-select:focus { border-color: var(--link); }
 	.icon-btn {
 		width: 34px;
 		height: 34px;
@@ -191,15 +208,12 @@ const API_BASE = 'http://localhost:8000';
 		color: var(--body);
 		transition: all 0.15s;
 	}
-	.icon-btn:hover {
-		background: var(--canvas-soft-2);
-		color: var(--ink);
-	}
+	.icon-btn:hover { background: var(--canvas-soft-2); color: var(--ink); }
 	.settings-panel {
 		position: fixed;
 		top: 56px;
 		right: 16px;
-		width: 320px;
+		width: 280px;
 		background: var(--canvas);
 		border: 1px solid var(--hairline);
 		border-radius: var(--radius-lg);
@@ -233,46 +247,13 @@ const API_BASE = 'http://localhost:8000';
 	}
 	.input:focus { border-color: var(--link); }
 	select.input { cursor: pointer; }
-	.toggle-row {
-		display: flex;
-		align-items: center;
-		gap: 10px;
-		margin-top: 4px;
-	}
-	.toggle-row span { font-size: 13px; color: var(--body); }
-	.toggle {
-		position: relative;
-		display: inline-block;
-		width: 36px;
-		height: 20px;
-	}
-	.toggle input { opacity: 0; width: 0; height: 0; }
-	.slider {
-		position: absolute;
-		cursor: pointer;
-		top: 0; left: 0; right: 0; bottom: 0;
-		background: var(--hairline-strong);
-		border-radius: 20px;
-		transition: 0.2s;
-	}
-	.slider::before {
-		content: '';
-		position: absolute;
-		height: 16px; width: 16px;
-		left: 2px; bottom: 2px;
-		background: white;
-		border-radius: 50%;
-		transition: 0.2s;
-	}
-	.toggle input:checked + .slider { background: var(--primary); }
-	.toggle input:checked + .slider::before { transform: translateX(16px); }
 	#mainLayout {
 		display: flex;
 		flex: 1;
 		overflow: hidden;
 	}
 	#sidebar {
-		width: 280px;
+		width: 260px;
 		flex-shrink: 0;
 		background: var(--canvas);
 		border-right: 1px solid var(--hairline);
@@ -283,7 +264,7 @@ const API_BASE = 'http://localhost:8000';
 		gap: 16px;
 	}
 	.sidebar-section h3 {
-		font-size: 12px;
+		font-size: 11px;
 		font-weight: 600;
 		text-transform: uppercase;
 		letter-spacing: 0.5px;
@@ -316,7 +297,7 @@ const API_BASE = 'http://localhost:8000';
 	}
 	.upload-label input { display: none; }
 	.file-status {
-		font-size: 12px;
+		font-size: 11px;
 		color: var(--success);
 		margin-top: 4px;
 	}
@@ -329,28 +310,93 @@ const API_BASE = 'http://localhost:8000';
 		padding: 2px 0;
 	}
 	.btn-link.hidden { display: none; }
-	.sidebar-tips { border-top: 1px solid var(--hairline); padding-top: 16px; }
-	.tip-chips {
-		display: flex;
-		flex-wrap: wrap;
-		gap: 6px;
-	}
-	.chip {
-		font-size: 12px;
-		padding: 5px 10px;
+	.sidebar-recent { border-top: 1px solid var(--hairline); padding-top: 16px; min-height: 0; display: flex; flex-direction: column; }
+	.sidebar-faq { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+	.faq-search {
+		width: 100%;
+		padding: 6px 8px;
 		border: 1px solid var(--hairline);
-		border-radius: var(--radius-pill);
+		border-radius: var(--radius-sm);
+		font-size: 12px;
+		font-family: inherit;
+		outline: none;
 		background: var(--canvas);
+		color: var(--ink);
+		box-sizing: border-box;
+		margin-bottom: 8px;
+	}
+	.faq-search:focus { border-color: var(--link); }
+	.faq-search::placeholder { color: var(--mute); }
+	.faq-list {
+		flex: 1;
+		overflow-y: auto;
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
+	}
+	.faq-category {
+		border-radius: var(--radius-sm);
+		overflow: hidden;
+	}
+	.faq-category-header {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		padding: 6px 8px;
+		font-size: 11px;
+		font-weight: 600;
 		color: var(--body);
 		cursor: pointer;
-		transition: all 0.15s;
-		font-family: inherit;
+		border-radius: var(--radius-sm);
+		transition: background 0.1s;
+		user-select: none;
 	}
-	.chip:hover {
-		border-color: var(--ink);
-		color: var(--ink);
-		background: var(--canvas-soft);
+	.faq-category-header:hover { background: var(--canvas-soft-2); }
+	.faq-category-header .arrow {
+		font-size: 8px;
+		transition: transform 0.15s;
 	}
+	.faq-category-header .arrow.open { transform: rotate(90deg); }
+	.faq-category-body {
+		display: flex;
+		flex-direction: column;
+		gap: 1px;
+		padding-left: 8px;
+	}
+	.faq-category-body.hidden { display: none; }
+	.faq-item {
+		font-size: 12px;
+		padding: 5px 8px;
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+		color: var(--body);
+		transition: all 0.1s;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.faq-item:hover { background: var(--canvas-soft-2); color: var(--ink); }
+	.faq-item.hidden { display: none; }
+	.recent-list {
+		flex: 1;
+		overflow-y: auto;
+		display: flex;
+		flex-direction: column;
+		gap: 4px;
+	}
+	.recent-item {
+		font-size: 12px;
+		padding: 6px 8px;
+		border-radius: var(--radius-sm);
+		cursor: pointer;
+		color: var(--body);
+		transition: all 0.1s;
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+	}
+	.recent-item:hover { background: var(--canvas-soft-2); color: var(--ink); }
+	.recent-item.active { background: var(--canvas-soft-2); color: var(--ink); font-weight: 500; }
 	#chatArea {
 		flex: 1;
 		display: flex;
@@ -364,22 +410,27 @@ const API_BASE = 'http://localhost:8000';
 		padding: 20px;
 		display: flex;
 		flex-direction: column;
-		gap: 16px;
+		gap: 20px;
 	}
-	.message {
+	.chat-card {
 		display: flex;
-		gap: 12px;
-		max-width: 800px;
+		flex-direction: column;
+		gap: 10px;
 		animation: fadeIn 0.2s ease;
 	}
 	@keyframes fadeIn {
 		from { opacity: 0; transform: translateY(8px); }
 		to { opacity: 1; transform: translateY(0); }
 	}
+	.message {
+		display: flex;
+		gap: 12px;
+		max-width: 760px;
+	}
 	.message.user { align-self: flex-end; flex-direction: row-reverse; }
 	.msg-avatar {
-		width: 32px;
-		height: 32px;
+		width: 30px;
+		height: 30px;
 		border-radius: 9999px;
 		display: flex;
 		align-items: center;
@@ -398,7 +449,7 @@ const API_BASE = 'http://localhost:8000';
 		background: var(--canvas);
 		border: 1px solid var(--hairline);
 		border-radius: var(--radius-lg);
-		padding: 14px 18px;
+		padding: 12px 16px;
 		font-size: 14px;
 		line-height: 1.6;
 		color: var(--ink);
@@ -409,65 +460,42 @@ const API_BASE = 'http://localhost:8000';
 		color: var(--on-primary);
 		border-color: var(--primary);
 	}
-	.msg-content p { margin: 0 0 8px; }
+	.msg-content p { margin: 0 0 6px; }
 	.msg-content p:last-child { margin: 0; }
 	.msg-content strong { font-weight: 600; }
-	.msg-content ul, .msg-content ol { margin: 6px 0; padding-left: 20px; }
-	.msg-content li { margin: 3px 0; }
-	.msg-content hr { border: none; border-top: 1px solid var(--hairline); margin: 12px 0; }
-	.msg-content blockquote {
-		border-left: 3px solid var(--link);
-		margin: 8px 0;
-		padding: 4px 12px;
-		color: var(--body);
-		font-style: italic;
-	}
-	.message.user .msg-content blockquote {
-		border-left-color: rgba(255,255,255,0.4);
-		color: rgba(255,255,255,0.85);
-	}
-	.section-label {
-		font-family: 'JetBrains Mono', monospace;
-		font-size: 12px;
-		font-weight: 600;
+	.streaming-cursor {
+		display: inline-block;
+		animation: blink 0.8s step-end infinite;
 		color: var(--mute);
-		text-transform: uppercase;
-		letter-spacing: 0.5px;
-		margin: 14px 0 4px;
+		font-weight: 300;
 	}
-	.message.user .section-label { color: rgba(255,255,255,0.6); }
-	.section-text { margin: 0; }
+	@keyframes blink { 50% { opacity: 0; } }
 	.msg-actions {
 		display: flex;
-		gap: 6px;
-		margin-top: 10px;
+		gap: 4px;
+		margin-top: 8px;
+		flex-wrap: wrap;
 	}
 	.msg-action-btn {
 		background: none;
 		border: 1px solid var(--hairline);
 		border-radius: var(--radius-sm);
-		padding: 4px 8px;
+		padding: 3px 8px;
 		font-size: 11px;
 		color: var(--mute);
 		cursor: pointer;
 		display: flex;
 		align-items: center;
 		gap: 4px;
-		transition: all 0.15s;
+		transition: all 0.1s;
+		font-family: inherit;
 	}
-	.msg-action-btn:hover { color: var(--ink); border-color: var(--hairline-strong); }
-	.message.interrupted { opacity: 0.7; }
-	.message.interrupted .msg-content { border-color: var(--hairline-strong); background: var(--canvas-soft); }
-	.streaming-cursor {
-		display: inline-block;
-		animation: blink 0.8s step-end infinite;
-		color: var(--mute);
-		font-weight: 300;
-		font-size: 16px;
-	}
-	@keyframes blink {
-		50% { opacity: 0; }
-	}
+	.msg-action-btn:hover { color: var(--ink); border-color: var(--hairline-strong); background: var(--canvas-soft); }
+	.msg-action-btn.primary-action { color: var(--link); border-color: var(--link); }
+	.msg-action-btn.primary-action:hover { background: #f0f7ff; }
+	.msg-action-btn.stop-btn { color: var(--error); border-color: var(--error); }
+	.msg-action-btn.stop-btn:hover { background: var(--error); color: white; }
+	.card-interrupted .msg-content { opacity: 0.6; border-style: dashed; }
 	.typing-indicator {
 		display: flex;
 		align-items: center;
@@ -476,7 +504,7 @@ const API_BASE = 'http://localhost:8000';
 	}
 	.typing-indicator.hidden { display: none; }
 	.typing-indicator span {
-		width: 7px; height: 7px;
+		width: 6px; height: 6px;
 		border-radius: 50%;
 		background: var(--hairline-strong);
 		animation: bounce 1.2s infinite;
@@ -485,7 +513,7 @@ const API_BASE = 'http://localhost:8000';
 	.typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
 	@keyframes bounce {
 		0%, 60%, 100% { transform: translateY(0); }
-		30% { transform: translateY(-6px); }
+		30% { transform: translateY(-4px); }
 	}
 	.typing-text {
 		font-size: 12px;
@@ -535,14 +563,57 @@ const API_BASE = 'http://localhost:8000';
 		border-color: var(--error);
 		animation: pulse 1.2s infinite;
 	}
-	.listening-label {
-		font-size: 12px;
-		font-weight: 500;
-		color: var(--error);
-		white-space: nowrap;
+	.mic-status {
+		display: flex;
+		flex-direction: column;
+		gap: 2px;
 		animation: fadeIn 0.2s ease;
 	}
-	.listening-label.hidden { display: none; }
+	.mic-status.hidden { display: none; }
+	.mic-status-row {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+	}
+	.listening-label {
+		font-size: 11px;
+		font-weight: 600;
+		color: var(--error);
+		white-space: nowrap;
+	}
+	.mic-level {
+		display: flex;
+		align-items: center;
+		gap: 1px;
+		height: 14px;
+	}
+	.mic-level-track {
+		display: flex;
+		align-items: flex-end;
+		gap: 1px;
+		height: 14px;
+	}
+	.mic-level-track .bar {
+		width: 2px;
+		background: var(--error);
+		border-radius: 1px;
+		transition: height 0.05s ease;
+		min-height: 2px;
+	}
+	.mic-level-track .bar.active { opacity: 1; }
+	.mic-level-track .bar.mid { opacity: 0.6; }
+	.mic-level-track .bar.low { opacity: 0.3; }
+	.mic-transcript {
+		font-size: 11px;
+		color: var(--mute);
+		white-space: nowrap;
+		overflow: hidden;
+		text-overflow: ellipsis;
+		max-width: 280px;
+		min-height: 14px;
+		line-height: 1.3;
+	}
+	.mic-transcript.highlight { color: var(--ink); font-style: italic; }
 	@keyframes pulse {
 		0%, 100% { box-shadow: 0 0 0 0 rgba(238,0,0,0.4); }
 		50% { box-shadow: 0 0 0 8px rgba(238,0,0,0); }
@@ -589,35 +660,109 @@ let isListening = false;
 let currentSpeaker = null;
 let abortController = null;
 let userScrolled = false;
+let recentQuestions = [];
+let messageCounter = 0;
+
+const STORAGE_KEYS = {
+	RECENT: 'interview_coach_recent',
+	MODEL: 'interview_coach_model',
+	LENGTH: 'interview_coach_length',
+	RESUME: 'interview_coach_resume',
+	JD: 'interview_coach_jd',
+};
 
 const messagesEl = document.getElementById('messages');
 const questionInput = document.getElementById('questionInput');
 const sendBtn = document.getElementById('sendBtn');
 const typingEl = document.getElementById('typingIndicator');
 const micBtn = document.getElementById('micBtn');
+const providerBadge = document.getElementById('providerBadge');
+
+function setActiveProvider(name) {
+	const label = name || '';
+	providerBadge.textContent = label ? `Using ${label}` : '';
+	providerBadge.className = 'provider-badge';
+	if (label) {
+		const cls = label.toLowerCase().includes('gemini') ? 'gemini'
+			: label.toLowerCase().includes('grok') ? 'grok'
+			: label.toLowerCase().includes('local') ? 'local'
+			: '';
+		if (cls) providerBadge.classList.add(cls);
+		providerBadge.classList.remove('hidden');
+	} else {
+		providerBadge.classList.add('hidden');
+	}
+}
+
+function saveToStorage(key, value) {
+	try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {}
+}
+
+function loadFromStorage(key, fallback) {
+	try {
+		const v = localStorage.getItem(key);
+		return v ? JSON.parse(v) : fallback;
+	} catch (e) { return fallback; }
+}
 
 messagesEl.addEventListener('scroll', () => {
-	const threshold = 80;
-	const atBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < threshold;
+	const atBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 80;
 	userScrolled = !atBottom;
 });
 
-function scrollToBottom() {
+function scrollToBottom(smooth) {
 	if (userScrolled) return;
-	messagesEl.scrollTop = messagesEl.scrollHeight;
+	messagesEl.scrollTo({ top: messagesEl.scrollHeight, behavior: smooth ? 'smooth' : 'auto' });
 }
 
-function getApiBase() {
-	return document.getElementById('apiBaseInput')?.value || API_BASE;
+function getApiBase() { return API_BASE; }
+function getModel() { return document.getElementById('headerModelSelect')?.value || ''; }
+function getLength() { return document.getElementById('lengthSelect')?.value || 'medium'; }
+
+function syncModelSelects(value) {
+	document.getElementById('headerModelSelect').value = value;
+	document.getElementById('modelSelect').value = value;
+	saveToStorage(STORAGE_KEYS.MODEL, value);
 }
 
-function getModel() {
-	return document.getElementById('modelSelect')?.value || 'llama-3.3-70b-versatile';
+function onModelChange(value) {
+	syncModelSelects(value);
 }
 
-function getStyle() {
-	return document.getElementById('styleSelect')?.value || 'natural';
+async function loadModels() {
+	const headerSel = document.getElementById('headerModelSelect');
+	const settingsSel = document.getElementById('modelSelect');
+	const savedModel = loadFromStorage(STORAGE_KEYS.MODEL, null);
+	try {
+		const resp = await fetch(`${getApiBase()}/api/models`);
+		const data = await resp.json();
+		headerSel.innerHTML = '';
+		settingsSel.innerHTML = '';
+		for (const m of data.models) {
+			const badges = (m.badges || []).map(b => b === 'fast' ? '⚡' : b === 'local' ? '💻' : '☁️').join(' ');
+			const label = `${badges ? badges + ' ' : ''}${m.name}`;
+			const hOpt = document.createElement('option');
+			hOpt.value = m.id; hOpt.textContent = label;
+			headerSel.appendChild(hOpt);
+			const sOpt = document.createElement('option');
+			sOpt.value = m.id; sOpt.textContent = label;
+			settingsSel.appendChild(sOpt);
+		}
+		const defaultModel = savedModel || data.default;
+		if (defaultModel && headerSel.querySelector(`option[value="${defaultModel}"]`)) {
+			syncModelSelects(defaultModel);
+		}
+	} catch (e) {
+		headerSel.innerHTML = '<option value="">No models</option>';
+		settingsSel.innerHTML = '<option value="">No models available</option>';
+	}
 }
+
+const savedLength = loadFromStorage(STORAGE_KEYS.LENGTH, 'medium');
+document.getElementById('lengthSelect').value = savedLength;
+document.getElementById('lengthSelect').addEventListener('change', () => {
+	saveToStorage(STORAGE_KEYS.LENGTH, document.getElementById('lengthSelect').value);
+});
 
 questionInput.addEventListener('input', () => {
 	sendBtn.disabled = !questionInput.value.trim();
@@ -636,39 +781,6 @@ function handleKeyDown(e) {
 	}
 }
 
-function addMessage(role, content) {
-	const div = document.createElement('div');
-	div.className = `message ${role}`;
-
-	const avatar = document.createElement('div');
-	avatar.className = 'msg-avatar';
-	if (role === 'assistant') {
-		avatar.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>';
-	} else {
-		avatar.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>';
-	}
-
-	const contentDiv = document.createElement('div');
-	contentDiv.className = 'msg-content';
-	contentDiv.innerHTML = formatMessage(content);
-
-	div.appendChild(avatar);
-	div.appendChild(contentDiv);
-	messagesEl.appendChild(div);
-
-	if (role === 'assistant') {
-		const actions = document.createElement('div');
-		actions.className = 'msg-actions';
-		const speakBtn = document.createElement('button');
-		speakBtn.className = 'msg-action-btn';
-		speakBtn.dataset.speaking = 'false';
-		speakBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg> Listen';
-		speakBtn.onclick = () => toggleSpeech(speakBtn, content.replace(/<[^>]*>/g, ''));
-		actions.appendChild(speakBtn);
-		contentDiv.appendChild(actions);
-	}
-}
-
 function escapeHtml(text) {
 	const div = document.createElement('div');
 	div.textContent = text;
@@ -678,94 +790,181 @@ function escapeHtml(text) {
 function formatMessage(text) {
 	let html = escapeHtml(text);
 	html = html
-		.replace(/^### (.+)$/gm, '<strong>$1</strong>')
 		.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-		.replace(/^Question: (.+)$/gm, '<div class="section-label">Question:</div><div class="section-text">$1</div>')
-		.replace(/^Best Answer:(.*)$/gm, '<div class="section-label">Best Answer:</div><div class="section-text">$1</div>')
-		.replace(/^🧠 Memory Trigger Points:$/gm, '<div class="section-label" style="margin-top:12px">🧠 Memory Trigger Points:</div>')
-		.replace(/^💬 Ways to Personalize:$/gm, '<div class="section-label" style="margin-top:12px">💬 Ways to Personalize:</div>')
-		.replace(/^• (.+)$/gm, '<li>$1</li>')
-		.replace(/^\d\.\s*(.+)$/gm, '<li>$1</li>')
-		.replace(/(<li>.*?<\/li>(\s*<li>.*?<\/li>)*)/g, '<ul>$1</ul>')
-		.replace(/\n\n/g, '</p><p>')
-		.replace(/\n/g, '<br/>')
-		.replace(/<\/ul>\s*<br\/>/g, '</ul>')
-		.replace(/<br\/>\s*<ul>/g, '<ul>')
-		.replace(/<br\/><\/ul>/g, '</ul>')
-		.replace(/<br\/>\s*<li>/g, '<li>');
-	return html;
+		.replace(/\n/g, '<br/>');
+	return `<p>${html}</p>`;
 }
 
-function createStreamingBubble() {
-	const div = document.createElement('div');
-	div.className = 'message assistant';
+function createChatCard(question) {
+	const card = document.createElement('div');
+	card.className = 'chat-card';
+	card.dataset.index = messageCounter++;
 
+	const userMsg = document.createElement('div');
+	userMsg.className = 'message user';
+	userMsg.innerHTML = `<div class="msg-avatar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></div><div class="msg-content"><p>${escapeHtml(question)}</p></div>`;
+
+	const assistantMsg = document.createElement('div');
+	assistantMsg.className = 'message assistant';
 	const avatar = document.createElement('div');
 	avatar.className = 'msg-avatar';
-	avatar.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>';
-
+	avatar.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>';
 	const contentDiv = document.createElement('div');
 	contentDiv.className = 'msg-content';
 	contentDiv.innerHTML = '<span class="streaming-cursor">|</span>';
+	assistantMsg.appendChild(avatar);
+	assistantMsg.appendChild(contentDiv);
 
-	div.appendChild(avatar);
-	div.appendChild(contentDiv);
-	messagesEl.appendChild(div);
+	card.appendChild(userMsg);
+	card.appendChild(assistantMsg);
+	messagesEl.appendChild(card);
 
-	return { wrapper: div, contentEl: contentDiv };
+	return { card, contentEl: contentDiv };
 }
 
-function updateStreamingBubble(bubble, text) {
-	bubble.contentEl.innerHTML = formatMessage(text) + '<span class="streaming-cursor">|</span>';
-	if (!userScrolled) {
-		messagesEl.scrollTop = messagesEl.scrollHeight;
-	}
+function updateStreamingBubble(contentEl, text) {
+	contentEl.innerHTML = formatMessage(text) + '<span class="streaming-cursor">|</span>';
 }
 
-function finalizeStreamingBubble(bubble, text) {
-	bubble.contentEl.innerHTML = formatMessage(text);
-
+function addStopButton(contentEl, onStop) {
 	const actions = document.createElement('div');
 	actions.className = 'msg-actions';
+	const stopBtn = document.createElement('button');
+	stopBtn.className = 'msg-action-btn stop-btn';
+	stopBtn.innerHTML = '⏹ Stop';
+	stopBtn.onclick = onStop;
+	actions.appendChild(stopBtn);
+	contentEl.appendChild(actions);
+}
+
+function finalizeAnswer(contentEl, text) {
+	contentEl.innerHTML = formatMessage(text);
+	const actions = document.createElement('div');
+	actions.className = 'msg-actions';
+
 	const speakBtn = document.createElement('button');
 	speakBtn.className = 'msg-action-btn';
 	speakBtn.dataset.speaking = 'false';
-	speakBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg> Listen';
+	speakBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg> Listen';
 	speakBtn.onclick = () => toggleSpeech(speakBtn, text.replace(/<[^>]*>/g, ''));
+
+	const copyBtn = document.createElement('button');
+	copyBtn.className = 'msg-action-btn';
+	copyBtn.innerHTML = '📋 Copy';
+	copyBtn.onclick = () => {
+		navigator.clipboard.writeText(text.replace(/<[^>]*>/g, '')).then(() => {
+			copyBtn.textContent = '✓ Copied';
+			setTimeout(() => { copyBtn.innerHTML = '📋 Copy'; }, 2000);
+		});
+	};
+
+	const retryBtn = document.createElement('button');
+	retryBtn.className = 'msg-action-btn primary-action';
+	retryBtn.innerHTML = '🔄 Try Again';
+	retryBtn.onclick = () => regenerateAnswer(contentEl.closest('.chat-card'), contentEl);
+
 	actions.appendChild(speakBtn);
-	bubble.contentEl.appendChild(actions);
+	actions.appendChild(copyBtn);
+	actions.appendChild(retryBtn);
+	contentEl.appendChild(actions);
 }
 
-async function sendQuestion() {
-	const text = questionInput.value.trim();
-	if (!text) return;
+function addRecentQuestion(text) {
+	recentQuestions = recentQuestions.filter(q => q !== text);
+	recentQuestions.unshift(text);
+	if (recentQuestions.length > 20) recentQuestions = recentQuestions.slice(0, 20);
+	saveToStorage(STORAGE_KEYS.RECENT, recentQuestions);
+	renderRecentList();
+}
+
+function renderRecentList() {
+	const list = document.getElementById('recentList');
+	const clearBtn = document.getElementById('clearHistoryBtn');
+	list.innerHTML = '';
+	if (recentQuestions.length === 0) {
+		list.innerHTML = '<p style="font-size:12px;color:var(--mute);margin:0">No questions yet.</p>';
+		clearBtn.classList.add('hidden');
+		return;
+	}
+	clearBtn.classList.remove('hidden');
+	for (const q of recentQuestions) {
+		const item = document.createElement('div');
+		item.className = 'recent-item';
+		item.textContent = q;
+		item.onclick = () => {
+			questionInput.value = q;
+			sendBtn.disabled = false;
+			autoResize(questionInput);
+			sendQuestion(q);
+		};
+		list.appendChild(item);
+	}
+}
+
+function clearHistory() {
+	recentQuestions = [];
+	saveToStorage(STORAGE_KEYS.RECENT, []);
+	renderRecentList();
+	messagesEl.innerHTML = '';
+	messageCounter = 0;
+	addWelcomeMessage();
+}
+
+function addWelcomeMessage() {
+	const card = document.createElement('div');
+	card.className = 'chat-card welcome-card';
+	const msg = document.createElement('div');
+	msg.className = 'message assistant';
+	msg.innerHTML = `<div class="msg-avatar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg></div><div class="msg-content"><p>Hi! I'm your DevOps Interview Answer Coach. Upload your resume and job description for personalized answers, then ask me any interview question to get started.</p></div>`;
+	card.appendChild(msg);
+	messagesEl.appendChild(card);
+}
+
+async function sendQuestion(text) {
+	const q = text || questionInput.value.trim();
+	if (!q) return;
 
 	if (abortController) {
 		abortController.abort();
+		abortController = null;
 	}
+
+	const activeCard = messagesEl.querySelector('.chat-card:last-child .message.assistant .streaming-cursor');
+	if (activeCard) {
+		activeCard.closest('.chat-card')?.classList.add('card-interrupted');
+	}
+
 	abortController = new AbortController();
 	const signal = abortController.signal;
 
 	questionInput.value = '';
 	autoResize(questionInput);
+	sendBtn.disabled = true;
 
+	setActiveProvider('');
 	userScrolled = false;
-	addMessage('user', text);
-	messagesEl.scrollTop = messagesEl.scrollHeight;
 
-	const bubble = createStreamingBubble();
-	messagesEl.scrollTop = messagesEl.scrollHeight;
+	addRecentQuestion(q);
+
+	const { card, contentEl } = createChatCard(q);
+	scrollToBottom(false);
+
+	addStopButton(contentEl, () => {
+		if (abortController) {
+			abortController.abort();
+			abortController = null;
+		}
+	});
 
 	try {
-		const base = getApiBase();
-		const resp = await fetch(`${base}/api/ask`, {
+		const resp = await fetch(`${getApiBase()}/api/ask`, {
 			method: 'POST',
 			headers: { 'Content-Type': 'application/json' },
 			body: JSON.stringify({
-				question: text,
+				question: q,
 				session_id: sessionId,
 				model: getModel(),
-				style: getStyle(),
+				length: getLength(),
 			}),
 			signal,
 		});
@@ -790,36 +989,47 @@ async function sendQuestion() {
 				if (payload === '[DONE]') continue;
 				try {
 					const parsed = JSON.parse(payload);
-					if (parsed.token) {
+					if (parsed.provider) {
+						setActiveProvider(parsed.provider);
+					} else if (parsed.token) {
 						fullAnswer += parsed.token;
-						updateStreamingBubble(bubble, fullAnswer);
+						updateStreamingBubble(contentEl, fullAnswer);
 					} else if (parsed.error) {
-						updateStreamingBubble(bubble, 'Error: ' + parsed.error);
+						contentEl.innerHTML = `<p>${escapeHtml(parsed.error)}</p>`;
 					}
-				} catch (e) { /* skip malformed */ }
+				} catch (e) {}
 			}
 		}
 
+		contentEl.querySelector('.msg-actions')?.remove();
 		if (fullAnswer) {
-			finalizeStreamingBubble(bubble, fullAnswer);
+			finalizeAnswer(contentEl, fullAnswer);
 		}
 	} catch (err) {
 		if (err.name === 'AbortError') {
-			abortController = null;
-			bubble.wrapper.classList.add('interrupted');
-			bubble.contentEl.innerHTML = '<div class="section-label" style="margin-top:0">Interrupted</div><p style="color:var(--mute);font-size:13px;margin:4px 0 0">A new question was asked before this answer finished.</p>';
+			contentEl.querySelector('.msg-actions')?.remove();
+			card.classList.add('card-interrupted');
+			if (contentEl.textContent.trim() === '|' || contentEl.textContent.trim() === '') {
+				contentEl.innerHTML = '<p style="color:var(--mute);font-size:13px">Stopped.</p>';
+			}
 			return;
 		}
-		bubble.contentEl.innerHTML = `<p>Connection error: ${escapeHtml(err.message)}. Make sure the backend server is running on port 8000.</p>`;
+		contentEl.innerHTML = `<p>Connection error. Make sure the backend is running.</p>`;
 	}
 
 	abortController = null;
 }
 
+async function regenerateAnswer(card, oldContentEl) {
+	const userMsgEl = card?.querySelector('.message.user .msg-content');
+	if (!userMsgEl) return;
+	const question = userMsgEl.textContent || '';
+	card.remove();
+	await sendQuestion(question);
+}
+
 function askQuick(text) {
-	questionInput.value = text;
-	sendBtn.disabled = false;
-	sendQuestion();
+	sendQuestion(text);
 }
 
 function toggleSpeech(btn, text) {
@@ -829,14 +1039,14 @@ function toggleSpeech(btn, text) {
 	if (isSpeaking) {
 		window.speechSynthesis.cancel();
 		btn.dataset.speaking = 'false';
-		btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg> Listen';
+		btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg> Listen';
 		currentSpeaker = null;
 		return;
 	}
 
 	if (currentSpeaker) {
 		currentSpeaker.dataset.speaking = 'false';
-		currentSpeaker.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg> Listen';
+		currentSpeaker.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg> Listen';
 		window.speechSynthesis.cancel();
 	}
 
@@ -844,7 +1054,6 @@ function toggleSpeech(btn, text) {
 	const utterance = new SpeechSynthesisUtterance(speech);
 	utterance.rate = 1.0;
 	utterance.pitch = 1.0;
-	utterance.volume = 1.0;
 
 	const voices = window.speechSynthesis.getVoices();
 	const preferred = voices.find(v => v.lang.startsWith('en') && v.name.includes('Google'));
@@ -852,13 +1061,13 @@ function toggleSpeech(btn, text) {
 
 	utterance.onend = () => {
 		btn.dataset.speaking = 'false';
-		btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg> Listen';
+		btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg> Listen';
 		currentSpeaker = null;
 	};
 
 	window.speechSynthesis.speak(utterance);
 	btn.dataset.speaking = 'true';
-	btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Stop';
+	btn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg> Stop';
 	currentSpeaker = btn;
 }
 
@@ -869,15 +1078,12 @@ async function uploadResume(e) {
 	formData.append('file', file);
 	formData.append('session_id', sessionId);
 	try {
-		const base = getApiBase();
-		const resp = await fetch(`${base}/api/upload/resume?session_id=${sessionId}`, {
-			method: 'POST',
-			body: formData,
-		});
+		const resp = await fetch(`${getApiBase()}/api/upload/resume?session_id=${sessionId}`, { method: 'POST', body: formData });
 		const data = await resp.json();
 		if (data.status === 'ok') {
-			document.getElementById('resumeStatus').textContent = 'Resume uploaded successfully';
+			document.getElementById('resumeStatus').textContent = 'Resume uploaded';
 			document.getElementById('clearResumeBtn').classList.remove('hidden');
+			saveToStorage(STORAGE_KEYS.RESUME, { filename: file.name, preview: data.preview });
 		}
 	} catch (err) {
 		document.getElementById('resumeStatus').textContent = 'Upload failed';
@@ -891,15 +1097,12 @@ async function uploadJD(e) {
 	formData.append('file', file);
 	formData.append('session_id', sessionId);
 	try {
-		const base = getApiBase();
-		const resp = await fetch(`${base}/api/upload/jd?session_id=${sessionId}`, {
-			method: 'POST',
-			body: formData,
-		});
+		const resp = await fetch(`${getApiBase()}/api/upload/jd?session_id=${sessionId}`, { method: 'POST', body: formData });
 		const data = await resp.json();
 		if (data.status === 'ok') {
 			document.getElementById('jdStatus').textContent = 'Job description uploaded';
 			document.getElementById('clearJDBtn').classList.remove('hidden');
+			saveToStorage(STORAGE_KEYS.JD, { filename: file.name, preview: data.preview });
 		}
 	} catch (err) {
 		document.getElementById('jdStatus').textContent = 'Upload failed';
@@ -911,6 +1114,7 @@ async function clearResume() {
 		await fetch(`${getApiBase()}/api/context/resume?session_id=${sessionId}`, { method: 'DELETE' });
 		document.getElementById('resumeStatus').textContent = '';
 		document.getElementById('clearResumeBtn').classList.add('hidden');
+		saveToStorage(STORAGE_KEYS.RESUME, null);
 	} catch (e) {}
 }
 
@@ -919,6 +1123,7 @@ async function clearJD() {
 		await fetch(`${getApiBase()}/api/context/jd?session_id=${sessionId}`, { method: 'DELETE' });
 		document.getElementById('jdStatus').textContent = '';
 		document.getElementById('clearJDBtn').classList.add('hidden');
+		saveToStorage(STORAGE_KEYS.JD, null);
 	} catch (e) {}
 }
 
@@ -926,112 +1131,212 @@ function toggleSettings() {
 	document.getElementById('settingsPanel').classList.toggle('hidden');
 }
 
-// Pre-initialize speech recognition
 const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 let recognition = null;
 let silenceTimer = null;
 let finalTranscript = '';
+let micManuallyStopped = false;
+let micStream = null;
+let audioContext = null;
+let analyserNode = null;
+let animationId = null;
+
+async function preloadMic() {
+	try {
+		micStream = await navigator.mediaDevices.getUserMedia({
+			audio: {
+				echoCancellation: true,
+				noiseSuppression: true,
+				autoGainControl: true,
+				channelCount: 1,
+				sampleRate: 16000,
+			},
+		});
+		audioContext = new (window.AudioContext || window.webkitAudioContext)();
+		const source = audioContext.createMediaStreamSource(micStream);
+		analyserNode = audioContext.createAnalyser();
+		analyserNode.fftSize = 256;
+		source.connect(analyserNode);
+	} catch (e) {
+		console.warn('Mic preload failed, will request on demand:', e.message);
+	}
+}
+
+preloadMic();
 
 if (SpeechRecognition) {
 	recognition = new SpeechRecognition();
 	recognition.lang = 'en-US';
 	recognition.interimResults = true;
 	recognition.continuous = false;
-	recognition.maxAlternatives = 1;
+	recognition.maxAlternatives = 3;
 
 	recognition.onresult = (event) => {
 		clearTimeout(silenceTimer);
 		let interim = '';
 		finalTranscript = '';
+		let bestConfidence = 0;
 		for (let i = event.resultIndex; i < event.results.length; i++) {
 			const result = event.results[i];
-			if (result.isFinal) {
-				finalTranscript += result[0].transcript;
-			} else {
-				interim += result[0].transcript;
-			}
+			const alt = result[0];
+			if (alt.confidence > bestConfidence) bestConfidence = alt.confidence;
+			if (result.isFinal) finalTranscript += alt.transcript;
+			else interim += alt.transcript;
 		}
-		questionInput.value = finalTranscript + interim;
+		const displayText = finalTranscript + interim;
+		questionInput.value = displayText;
 		sendBtn.disabled = false;
 		autoResize(questionInput);
+		const micTranscript = document.getElementById('micTranscript');
+		if (micTranscript) micTranscript.textContent = interim || (finalTranscript ? finalTranscript : '');
 
-		if (finalTranscript) {
-			silenceTimer = setTimeout(() => {
-				if (recognition) recognition.stop();
-			}, 1200);
+		if (finalTranscript && finalTranscript.trim().length > 1) {
+			if (bestConfidence < 0.3 && bestConfidence > 0) {
+				if (micTranscript) {
+					micTranscript.textContent = 'I couldn\'t hear you clearly. Please try again or move closer to the microphone.';
+					micTranscript.classList.add('highlight');
+				}
+				setTimeout(() => {
+					finalTranscript = '';
+					questionInput.value = '';
+					sendBtn.disabled = true;
+					autoResize(questionInput);
+					if (micTranscript) {
+						micTranscript.textContent = '';
+						micTranscript.classList.remove('highlight');
+					}
+				}, 2000);
+				return;
+			}
+			silenceTimer = setTimeout(() => { if (recognition) recognition.stop(); }, 1500);
 		}
 	};
 
 	recognition.onstart = () => {
 		micBtn.classList.add('listening');
-		document.getElementById('listeningLabel').classList.remove('hidden');
+		document.getElementById('micStatus').classList.remove('hidden');
 		isListening = true;
+		micManuallyStopped = false;
+		finalTranscript = '';
+		const mt = document.getElementById('micTranscript');
+		if (mt) { mt.textContent = ''; mt.classList.remove('highlight'); }
+		startLevelMeter();
 	};
 
-	recognition.onerror = () => {
+	recognition.onerror = (e) => {
 		micBtn.classList.remove('listening');
-		document.getElementById('listeningLabel').classList.add('hidden');
+		document.getElementById('micStatus').classList.add('hidden');
 		isListening = false;
 		clearTimeout(silenceTimer);
+		stopLevelMeter();
 	};
 
 	recognition.onend = () => {
 		micBtn.classList.remove('listening');
-		document.getElementById('listeningLabel').classList.add('hidden');
+		document.getElementById('micStatus').classList.add('hidden');
 		isListening = false;
 		clearTimeout(silenceTimer);
-		if (finalTranscript) {
+		stopLevelMeter();
+		if (finalTranscript && !micManuallyStopped) {
 			questionInput.value = finalTranscript;
 			sendBtn.disabled = false;
 			autoResize(questionInput);
-			sendQuestion();
+			sendQuestion(finalTranscript);
 		}
 		finalTranscript = '';
+		micManuallyStopped = false;
 	};
 }
 
-function toggleMic() {
-	if (isListening) {
-		stopListening();
-	} else {
-		startListening();
+function startLevelMeter() {
+	stopLevelMeter();
+	const track = document.querySelector('.mic-level-track');
+	if (!track || !analyserNode) return;
+	const bars = track.querySelectorAll('.bar');
+	if (!bars.length) {
+		for (let i = 0; i < 12; i++) {
+			const bar = document.createElement('span');
+			bar.className = 'bar' + (i < 4 ? ' low' : i < 8 ? ' mid' : ' active');
+			track.appendChild(bar);
+		}
 	}
+	const dataArray = new Uint8Array(analyserNode.frequencyBinCount);
+	function tick() {
+		if (!isListening) return;
+		analyserNode.getByteTimeDomainData(dataArray);
+		let sum = 0;
+		for (let i = 0; i < dataArray.length; i++) {
+			const val = dataArray[i] - 128;
+			sum += val * val;
+		}
+		const rms = Math.sqrt(sum / dataArray.length);
+		const level = Math.min(1, rms / 60);
+		const numBars = Math.round(level * 12);
+		const bars = track.querySelectorAll('.bar');
+		bars.forEach((b, i) => {
+			b.style.height = (2 + (i + 1) * 1.2) + 'px';
+			b.style.opacity = i < numBars ? '1' : '0.15';
+		});
+		animationId = requestAnimationFrame(tick);
+	}
+	animationId = requestAnimationFrame(tick);
+}
+
+function stopLevelMeter() {
+	if (animationId) {
+		cancelAnimationFrame(animationId);
+		animationId = null;
+	}
+}
+
+function toggleMic() {
+	if (isListening) return stopListening();
+	startListening();
 }
 
 function startListening() {
 	if (!recognition) {
-		addMessage('assistant', 'Voice input is not supported in this browser. Try Chrome or Edge.');
+		const card = messagesEl.querySelector('.chat-card:last-child .message.assistant .streaming-cursor');
+		if (!card) {
+			const c = document.createElement('div');
+			c.className = 'chat-card';
+			const m = document.createElement('div');
+			m.className = 'message assistant';
+			m.innerHTML = '<div class="msg-avatar"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg></div><div class="msg-content"><p>Voice input is not supported in this browser. Try Chrome or Edge.</p></div>';
+			c.appendChild(m);
+			messagesEl.appendChild(c);
+		}
 		return;
 	}
 
 	if (abortController) {
 		abortController.abort();
+		abortController = null;
 	}
 	window.speechSynthesis?.cancel();
 	if (currentSpeaker) {
 		currentSpeaker.dataset.speaking = 'false';
-		currentSpeaker.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg> Listen';
+		currentSpeaker.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg> Listen';
 		currentSpeaker = null;
 	}
+
+	if (!micStream) preloadMic();
 
 	finalTranscript = '';
 	questionInput.value = '';
 	sendBtn.disabled = true;
 	autoResize(questionInput);
-
-	try {
-		recognition.start();
-	} catch (e) {}
+	try { if (recognition) recognition.start(); } catch (e) {}
 }
 
 function stopListening() {
 	clearTimeout(silenceTimer);
-	if (recognition) {
-		try { recognition.stop(); } catch (e) {}
-	}
+	micManuallyStopped = true;
+	if (recognition) { try { recognition.stop(); } catch (e) {} }
 	micBtn.classList.remove('listening');
-	document.getElementById('listeningLabel').classList.add('hidden');
+	document.getElementById('micStatus').classList.add('hidden');
 	isListening = false;
+	stopLevelMeter();
 }
 
 document.addEventListener('click', (e) => {
@@ -1040,4 +1345,129 @@ document.addEventListener('click', (e) => {
 		panel.classList.add('hidden');
 	}
 });
+
+const FAQ_DATA = [
+	{
+		label: 'General Introduction',
+		questions: [
+			'Tell me about yourself.',
+			'Explain your current project.',
+			'What are your day-to-day activities?',
+			'What are your roles and responsibilities?',
+		],
+	},
+	{
+		label: 'Project Experience',
+		questions: [
+			'Describe a challenging incident you handled.',
+			'Explain a production issue you resolved.',
+			'Tell me about a deployment issue you faced.',
+			'Explain an outage you worked on.',
+			'Describe a situation where you worked under pressure.',
+			'Tell me about a mistake you made and what you learned.',
+		],
+	},
+	{
+		label: 'DevOps Questions',
+		questions: [
+			'Explain CI/CD.',
+			'Explain Docker.',
+			'Explain Kubernetes.',
+			'Explain your Kubernetes experience.',
+			'How do you troubleshoot failing pods?',
+			'Explain Terraform.',
+			'Explain Infrastructure as Code.',
+			'Explain blue-green deployment.',
+			'Explain canary deployment.',
+			'Explain Git branching strategies.',
+			'Explain Jenkins pipelines.',
+			'Explain GitHub Actions.',
+			'Explain monitoring and alerting.',
+			'Explain Prometheus and Grafana.',
+			'Explain AWS services you have used.',
+		],
+	},
+	{
+		label: 'Behavioral Questions',
+		questions: [
+			'Tell me about a conflict within your team.',
+			'How do you prioritize tasks?',
+			'How do you handle tight deadlines?',
+			'Describe a leadership experience.',
+			'Tell me about a time you failed.',
+			'Tell me about a difficult stakeholder.',
+		],
+	},
+];
+
+function renderFAQ(filter) {
+	const list = document.getElementById('faqList');
+	list.innerHTML = '';
+	const f = (filter || '').toLowerCase().trim();
+	for (const cat of FAQ_DATA) {
+		const catDiv = document.createElement('div');
+		catDiv.className = 'faq-category';
+
+		const header = document.createElement('div');
+		header.className = 'faq-category-header';
+		header.innerHTML = `<span class="arrow open">▶</span> ${cat.label}`;
+		const body = document.createElement('div');
+		body.className = 'faq-category-body';
+
+		let visibleCount = 0;
+		for (const q of cat.questions) {
+			const item = document.createElement('div');
+			item.className = 'faq-item';
+			item.textContent = q;
+			const match = !f || q.toLowerCase().includes(f);
+			if (!match) item.classList.add('hidden');
+			else visibleCount++;
+			item.onclick = () => {
+				if (abortController) { abortController.abort(); abortController = null; }
+				const existing = messagesEl.querySelector('.chat-card:last-child .message.assistant .streaming-cursor');
+				if (existing) existing.closest('.chat-card')?.classList.add('card-interrupted');
+				sendQuestion(q);
+			};
+			body.appendChild(item);
+		}
+
+		if (f && visibleCount === 0) {
+			catDiv.classList.add('hidden');
+		} else {
+			catDiv.classList.remove('hidden');
+		}
+
+		if (f) {
+			body.classList.remove('hidden');
+			header.querySelector('.arrow').classList.add('open');
+		} else {
+			const saved = sessionStorage.getItem('faq_open_' + cat.label);
+			if (saved === '1') {
+				body.classList.remove('hidden');
+				header.querySelector('.arrow').classList.add('open');
+			}
+		}
+
+		header.onclick = () => {
+			body.classList.toggle('hidden');
+			header.querySelector('.arrow').classList.toggle('open');
+			sessionStorage.setItem('faq_open_' + cat.label, body.classList.contains('hidden') ? '0' : '1');
+		};
+
+		catDiv.appendChild(header);
+		catDiv.appendChild(body);
+		list.appendChild(catDiv);
+	}
+}
+
+function filterFAQ() {
+	const q = document.getElementById('faqSearch').value;
+	renderFAQ(q);
+}
+
+recentQuestions = loadFromStorage(STORAGE_KEYS.RECENT, []);
+renderRecentList();
+renderFAQ('');
+addWelcomeMessage();
+loadModels();
 </script>
